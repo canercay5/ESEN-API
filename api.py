@@ -21,7 +21,7 @@ class PredictionRequest(BaseModel):
 app = FastAPI(title="ESEN Outbreak Prediction API", version="1.0")
 
 # Modeli global olarak bir kere yüklüyoruz (Her istekte tekrar yüklenmesin diye)
-MODEL_PATH = "data_science/esen_regional_lstm_model.keras"
+MODEL_PATH = "esen_regional_lstm_model.keras"
 try:
     model = tf.keras.models.load_model(MODEL_PATH, compile=False)
     print("✅ LSTM Modeli başarıyla yüklendi ve API dinlemeye hazır.")
