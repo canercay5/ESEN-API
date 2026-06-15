@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 import numpy as np
 import tensorflow as tf
 from typing import List
-import uvicorn
+import uvicorn 
 
 # --- 1. Veri Modelleri (C#'tan Gelecek JSON Formatı) ---
 class DailyData(BaseModel):
