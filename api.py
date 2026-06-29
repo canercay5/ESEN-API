@@ -4,6 +4,7 @@ import numpy as np
 import tensorflow as tf
 from typing import List
 import uvicorn 
+import os
 
 # --- 1. Veri Modelleri (C#\'tan Gelecek JSON Formatı) ---
 class DailyData(BaseModel):
@@ -21,12 +22,17 @@ class PredictionRequest(BaseModel):
 app = FastAPI(title="ESEN Outbreak Prediction API", version="1.0")
 
 # Modeli global olarak bir kere yüklüyoruz (Her istekte tekrar yüklenmesin diye)
-MODEL_PATH = "esen_regional_lstm_model.keras"
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "esen_regional_lstm_model.keras")
+
+# Fallback for Render deployment where model might be in the root directory
+if not os.path.exists(MODEL_PATH):
+    MODEL_PATH = "esen_regional_lstm_model.keras"
+
 try:
     model = tf.keras.models.load_model(MODEL_PATH, compile=False)
-    print("✅ LSTM Modeli başarıyla yüklendi ve API dinlemeye hazır.")
+    print(f"✅ LSTM Modeli başarıyla yüklendi: {MODEL_PATH}")
 except Exception as e:
-    print(f"❌ Model yüklenirken hata oluştu: {e}")
+    print(f"❌ Model yüklenirken hata oluştu: {e}. Denenen yol: {MODEL_PATH}")
     model = None
 
 THRESHOLD = 0.354  # Belirlediğimiz kritik salgın eşiği
