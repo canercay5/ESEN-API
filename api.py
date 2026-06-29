@@ -5,7 +5,7 @@ import tensorflow as tf
 from typing import List
 import uvicorn 
 
-# --- 1. Veri Modelleri (C#'tan Gelecek JSON Formatı) ---
+# --- 1. Veri Modelleri (C#\'tan Gelecek JSON Formatı) ---
 class DailyData(BaseModel):
     sales: float = Field(..., description="Günlük toplam satış adedi")
     avg_temp: float = Field(..., description="Ortalama sıcaklık")
@@ -38,26 +38,19 @@ async def predict_outbreak(request: PredictionRequest):
         raise HTTPException(status_code=500, detail="Yapay zeka modeli aktif değil.")
 
     try:
-        # C#'tan gelen JSON verisini Numpy dizisine çeviriyoruz
-        input_data = []
-        for day in request.features:
-            # Not: Gerçek senaryoda burada MinMaxScaler ile veriyi 0-1 arasına sıkıştırmalısın.
-            # Şimdilik C#'tan normalize edilmiş veri geldiğini varsayıyoruz.
-            input_data.append([
-                day.sales, 
-                day.avg_temp, 
-                day.avg_humidity, 
-                day.normalizedDensity
-            ])
+        # C#\'tan gelen JSON verisini Numpy dizisine çeviriyoruz
+        # Verilerin zaten normalize edilmiş olduğu varsayılır.
+        input_data = np.array([[day.sales, day.avg_temp, day.avg_humidity, day.normalizedDensity] for day in request.features])
 
         # Modeli [1, 7, 4] formatına (1 batch, 7 gün, 4 özellik) sokuyoruz
-        X_input = np.array([input_data])
+        X_input = np.expand_dims(input_data, axis=0)
         
         # Tahmin yap
-        prediction_value = float(model.predict(X_input, verbose=0)[0][0])
+        # Model.predict doğrudan numpy dizisi döndürür, bu yüzden .tolist() kullanıyoruz.
+        prediction_value = float(model.predict(X_input, verbose=0)[0].tolist()[0])
         is_outbreak = prediction_value > THRESHOLD
 
-        # C# Backend'ine gidecek olan final raporu
+        # C# Backend\'ine gidecek olan final raporu
         return {
             "region": f"{request.city} - {request.town}",
             "risk_score": round(prediction_value, 4),
