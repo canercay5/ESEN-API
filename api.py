@@ -5,6 +5,69 @@ import tensorflow as tf
 from typing import List
 import uvicorn 
 import os
+import h5py
+import json
+import tempfile
+import zipfile
+
+
+def load_legacy_keras_model(model_path):
+    """Load the bundled .keras model with a fallback for older serialized configs."""
+
+    try:
+        return tf.keras.models.load_model(model_path, compile=False)
+    except Exception as primary_error:
+        print(f"Standard Keras load failed for {model_path}: {primary_error}")
+
+    try:
+        with zipfile.ZipFile(model_path) as archive:
+            parsed_config = json.loads(archive.read("config.json"))
+            layers = parsed_config["config"]["layers"]
+
+            model = tf.keras.Sequential(name=parsed_config["config"].get("name", "sequential"))
+            model.add(tf.keras.layers.Input(shape=(7, 4), name=layers[0]["config"].get("name", "input_layer")))
+            model.add(tf.keras.layers.LSTM(64, return_sequences=True, activation="tanh", name=layers[1]["config"].get("name", "lstm")))
+            model.add(tf.keras.layers.Dropout(0.2, name=layers[2]["config"].get("name", "dropout")))
+            model.add(tf.keras.layers.LSTM(32, return_sequences=False, activation="tanh", name=layers[3]["config"].get("name", "lstm_1")))
+            model.add(tf.keras.layers.Dropout(0.2, name=layers[4]["config"].get("name", "dropout_1")))
+            model.add(tf.keras.layers.Dense(1, activation="linear", name=layers[5]["config"].get("name", "dense")))
+
+            with archive.open("model.weights.h5") as weights_file:
+                with tempfile.NamedTemporaryFile(suffix=".weights.h5", delete=False) as temp_weights_file:
+                    temp_weights_file.write(weights_file.read())
+                    temp_weights_path = temp_weights_file.name
+
+            try:
+                with h5py.File(temp_weights_path, "r") as weights_archive:
+                    lstm_weights = [
+                        weights_archive["layers/lstm/cell/vars/0"][...],
+                        weights_archive["layers/lstm/cell/vars/1"][...],
+                        weights_archive["layers/lstm/cell/vars/2"][...],
+                    ]
+                    lstm_1_weights = [
+                        weights_archive["layers/lstm_1/cell/vars/0"][...],
+                        weights_archive["layers/lstm_1/cell/vars/1"][...],
+                        weights_archive["layers/lstm_1/cell/vars/2"][...],
+                    ]
+                    dense_weights = [
+                        weights_archive["layers/dense/vars/0"][...],
+                        weights_archive["layers/dense/vars/1"][...],
+                    ]
+
+                model.get_layer(layers[1]["config"].get("name", "lstm")).set_weights(lstm_weights)
+                model.get_layer(layers[3]["config"].get("name", "lstm_1")).set_weights(lstm_1_weights)
+                model.get_layer(layers[5]["config"].get("name", "dense")).set_weights(dense_weights)
+            finally:
+                try:
+                    os.remove(temp_weights_path)
+                except OSError:
+                    pass
+
+            print(f"Legacy LSTM model reconstructed successfully: {model_path}")
+            return model
+    except Exception as fallback_error:
+        print(f"Legacy model fallback failed for {model_path}: {fallback_error}")
+        return None
 
 # --- 1. Veri Modelleri (C#\'tan Gelecek JSON Formatı) ---
 class DailyData(BaseModel):
@@ -37,7 +100,9 @@ def load_model_from_candidates(candidate_paths):
             continue
 
         try:
-            loaded_model = tf.keras.models.load_model(candidate_path, compile=False)
+            loaded_model = load_legacy_keras_model(candidate_path)
+            if loaded_model is None:
+                raise RuntimeError("Model could not be loaded.")
             print(f"LSTM model loaded successfully: {candidate_path}")
             return loaded_model
         except Exception as error:
