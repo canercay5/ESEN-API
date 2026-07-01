@@ -22,18 +22,35 @@ class PredictionRequest(BaseModel):
 app = FastAPI(title="ESEN Outbreak Prediction API", version="1.0")
 
 # Modeli global olarak bir kere yüklüyoruz (Her istekte tekrar yüklenmesin diye)
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "esen_regional_lstm_model.keras")
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+MODEL_CANDIDATES = [
+    os.path.join(BASE_DIR, "esen_regional_lstm_model.keras"),
+    os.path.join(os.getcwd(), "esen_regional_lstm_model.keras"),
+]
 
-# Fallback for Render deployment where model might be in the root directory
-if not os.path.exists(MODEL_PATH):
-    MODEL_PATH = "esen_regional_lstm_model.keras"
 
-try:
-    model = tf.keras.models.load_model(MODEL_PATH, compile=False)
-    print(f"✅ LSTM Modeli başarıyla yüklendi: {MODEL_PATH}")
-except Exception as e:
-    print(f"❌ Model yüklenirken hata oluştu: {e}. Denenen yol: {MODEL_PATH}")
-    model = None
+def load_model_from_candidates(candidate_paths):
+    last_error = None
+
+    for candidate_path in candidate_paths:
+        if not os.path.exists(candidate_path):
+            continue
+
+        try:
+            loaded_model = tf.keras.models.load_model(candidate_path, compile=False)
+            print(f"LSTM model loaded successfully: {candidate_path}")
+            return loaded_model
+        except Exception as error:
+            last_error = error
+            print(f"Model load failed for {candidate_path}: {error}")
+
+    print("Model file not found in any expected location.")
+    if last_error is not None:
+        print(f"Last load error: {last_error}")
+    return None
+
+
+model = load_model_from_candidates(MODEL_CANDIDATES)
 
 THRESHOLD = 0.354  # Belirlediğimiz kritik salgın eşiği
 
